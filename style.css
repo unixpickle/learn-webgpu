@@ -1,0 +1,84 @@
+html,
+body {
+    margin: 0;
+    border: 0;
+    font-family: sans-serif;
+    background-color: #f0f0f0;
+}
+
+#container {
+    position: absolute;
+    top: 10px;
+    height: calc(100% - 20px);
+    background-color: white;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+}
+
+@media screen and (max-width: 700px) {
+    #container {
+        width: calc(100% - 20px);
+        left: 10px;
+    }
+}
+
+@media screen and (min-width: 700px) {
+    #container {
+        width: 680px;
+        left: calc(50% - 340px);
+    }
+}
+
+#controls {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 30px;
+    padding: 10px 0 0 0;
+    text-align: center;
+}
+
+#module {
+    margin: 0;
+    padding: 0;
+    height: 30px;
+    line-height: 30px;
+    width: 200px;
+}
+
+#run-button {
+    margin: 0;
+    padding: 0 5px;
+    height: 30px;
+    line-height: 30px;
+    width: 80px;
+    font-size: 1em;
+    background-color: #65bcd4;
+    color: white;
+    cursor: pointer;
+    border: none;
+}
+
+#run-button:hover {
+    background-color: #55acc4;
+}
+
+.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+#output {
+    background-color: black;
+    color: white;
+    position: absolute;
+    font-size: 1.5em;
+    margin: 0;
+    top: 50px;
+    left: 10px;
+    height: calc(100% - 60px);
+    width: calc(100% - 20px);
+    box-sizing: border-box;
+    padding: 5px;
+    overflow-y: scroll;
+}
