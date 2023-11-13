@@ -18,7 +18,7 @@ class App {
     }
 
     async run() {
-        this.output.textContent = '';
+        this.output.innerText = '';
         this.runButton.classList.add('disabled');
         const module = this.modules[parseInt(this.moduleSelect.value)];
         try {
@@ -32,10 +32,10 @@ class App {
 
     log(line) {
         // TODO: scroll to bottom?
-        if (this.output.textContent) {
-            this.output.textContent += '\n';
+        if (this.output.innerText) {
+            this.output.innerText += '\n';
         }
-        this.output.textContent += line;
+        this.output.innerText += line;
         return new Promise((resolve, _reject) => {
             setTimeout(resolve, 10);
         });

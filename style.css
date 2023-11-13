@@ -81,4 +81,6 @@ body {
     box-sizing: border-box;
     padding: 5px;
     overflow-y: scroll;
+    word-break: break-all;
+    white-space: normal;
 }
