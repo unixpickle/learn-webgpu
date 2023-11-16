@@ -21,13 +21,13 @@ class ElemwiseSqrt extends Module {
         await util.runKernel(elemwiseSqrtKernel, "main", Math.ceil(inputs.length / 256));
         const t2 = new Date().getTime();
 
-        window.app.log(`completed kernel in ${t2 - t1} milliseconds`);
+        await window.app.log(`completed kernel in ${t2 - t1} milliseconds`);
 
         for (let i = 0; i < inputs.length; i++) {
             const actualOut = output[i];
             const expectedOut = Math.sqrt(inputs[i]);
             if (Math.abs(actualOut - expectedOut) > 1e-2) {
-                window.app.log(
+                await window.app.log(
                     `incorrect value at index ${i}: ` +
                     `expected ${expectedOut} got ${actualOut}`,
                 );
@@ -35,7 +35,7 @@ class ElemwiseSqrt extends Module {
             }
         }
 
-        window.app.log('correctness check complete.');
+        await window.app.log('correctness check complete.');
     }
 }
 
