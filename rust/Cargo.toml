@@ -1,0 +1,19 @@
+[package]
+name = "learn-webgpu"
+version = "0.0.1"
+description = "wgpu tests"
+publish = false
+edition = "2021"
+
+[[bin]]
+name = "matmul"
+path = "src/matmul.rs"
+harness = false
+
+[dependencies]
+bytemuck = { version = "1.14", features = ["derive"] }
+env_logger = { version = "0.10" }
+flume = { version = "0.11" }
+pollster = { version = "0.3" }
+wgpu = { version = "0.18" }
+rand = { version = "0.8.5" }
