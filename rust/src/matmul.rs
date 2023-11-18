@@ -3,12 +3,12 @@
 extern crate wgpu;
 
 use rand::prelude::*;
-use std::{borrow::Cow, time::Instant};
-use wgpu::{util::DeviceExt, BufferAddress};
+use std::borrow::Cow;
+use wgpu::{util::DeviceExt, BufferAddress, QuerySetDescriptor, QueryType};
 
 async fn run() {
     test_with_size(64).await;
-    test_with_size(4096 + 2048).await;
+    test_with_size(4096).await;
 }
 
 async fn test_with_size(size: usize) {
@@ -61,7 +61,7 @@ async fn execute_gpu(mat1: &[f32], mat2: &[f32], out: &mut [f32], size: usize) -
         .request_device(
             &wgpu::DeviceDescriptor {
                 label: None,
-                features: wgpu::Features::empty(),
+                features: wgpu::Features::TIMESTAMP_QUERY,
                 limits: wgpu::Limits::downlevel_defaults(),
             },
             None,
@@ -95,12 +95,18 @@ async fn execute_gpu_inner(
     assert_eq!(mat_bytes, std::mem::size_of_val(out) as wgpu::BufferAddress);
 
     // Create various buffers.
-    // let timestamps_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-    //     label: None,
-    //     size: 16, // two 64-bit timestamps
-    //     usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-    //     mapped_at_creation: false,
-    // });
+    let timestamp_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: 16, // two 64-bit timestamps
+        usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::QUERY_RESOLVE,
+        mapped_at_creation: false,
+    });
+    let timestamp_destination_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: 16,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
     let result_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
         size: mat_bytes,
@@ -163,17 +169,17 @@ async fn execute_gpu_inner(
     });
 
     // Used for measuring timestamps.
-    // let query_set = device.create_query_set(&QuerySetDescriptor {
-    //     label: Some("execution time"),
-    //     ty: QueryType::Timestamp,
-    //     count: 2,
-    // });
+    let query_set = device.create_query_set(&QuerySetDescriptor {
+        label: Some("execution time"),
+        ty: QueryType::Timestamp,
+        count: 2,
+    });
 
     // A command encoder executes one or many pipelines.
     // It is to WebGPU what a command buffer is to Vulkan.
     let mut encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-    // encoder.write_timestamp(&query_set, 0);
+    encoder.write_timestamp(&query_set, 0);
     {
         let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: None,
@@ -183,10 +189,10 @@ async fn execute_gpu_inner(
         cpass.set_bind_group(0, &bind_group, &[]);
         cpass.dispatch_workgroups((size / 64) as u32, (size / 64) as u32, 1);
     }
-    // encoder.write_timestamp(&query_set, 1);
+    encoder.write_timestamp(&query_set, 1);
 
     // Write results of query to a buffer.
-    // encoder.resolve_query_set(&query_set, 0..2, &timestamps_buffer, 0);
+    encoder.resolve_query_set(&query_set, 0..2, &timestamp_buffer, 0);
 
     // Write results of kernel to a buffer mapped to the CPU.
     encoder.copy_buffer_to_buffer(
@@ -196,9 +202,9 @@ async fn execute_gpu_inner(
         0,
         std::mem::size_of_val(out) as BufferAddress,
     );
+    encoder.copy_buffer_to_buffer(&timestamp_buffer, 0, &timestamp_destination_buffer, 0, 16);
 
     // Submits command encoder for processing
-    let start_time = Instant::now();
     queue.submit(Some(encoder.finish()));
 
     // Note that we're not calling `.await` here.
@@ -206,9 +212,9 @@ async fn execute_gpu_inner(
     let (buffer_tx, buffer_rx) = flume::bounded(1);
     buffer_slice.map_async(wgpu::MapMode::Read, move |v| buffer_tx.send(v).unwrap());
 
-    // let timestamp_slice = timestamps_buffer.slice(..);
-    // let (timestamp_tx, timestamp_rx) = flume::bounded(1);
-    // timestamp_slice.map_async(wgpu::MapMode::Read, move |v| timestamp_tx.send(v).unwrap());
+    let timestamp_slice = timestamp_destination_buffer.slice(..);
+    let (timestamp_tx, timestamp_rx) = flume::bounded(1);
+    timestamp_slice.map_async(wgpu::MapMode::Read, move |v| timestamp_tx.send(v).unwrap());
 
     // Poll the device in a blocking manner so that our future resolves.
     // In an actual application, `device.poll(...)` should
@@ -226,24 +232,23 @@ async fn execute_gpu_inner(
         // dropped before we unmap the buffer.
         drop(data);
         result_buffer.unmap();
-        Some(start_time.elapsed().as_secs_f64())
     } else {
         panic!("failed to run compute on gpu!")
     }
 
     // Read results from timestamps.
-    // if let Ok(Ok(())) = timestamp_rx.recv_async().await {
-    //     let data = buffer_slice.get_mapped_range();
-    //     let numbers: &[u64] = bytemuck::cast_slice(&data);
-    //     let duration = numbers[1] - numbers[0];
-    //     let nanos = (duration as f64) * (queue.get_timestamp_period() as f64);
-    //     drop(data);
-    //     timestamps_buffer.unmap();
+    if let Ok(Ok(())) = timestamp_rx.recv_async().await {
+        let data = timestamp_slice.get_mapped_range();
+        let numbers: &[u64] = bytemuck::cast_slice(&data);
+        let duration = numbers[1] - numbers[0];
+        let nanos = (duration as f64) * (queue.get_timestamp_period() as f64);
+        drop(data);
+        timestamp_destination_buffer.unmap();
 
-    //     Some(nanos / 1000000000.0)
-    // } else {
-    //     panic!("failed to run compute on gpu!")
-    // }
+        Some(nanos / 1000000000.0)
+    } else {
+        panic!("failed to run compute on gpu!")
+    }
 }
 
 fn main() {
