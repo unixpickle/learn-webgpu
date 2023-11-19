@@ -6,8 +6,12 @@ use rand::prelude::*;
 use std::borrow::Cow;
 use wgpu::{util::DeviceExt, BufferAddress, QuerySetDescriptor, QueryType};
 
+const REPEATS: i32 = 3;
+
 async fn run() {
     test_with_size(64).await;
+    test_with_size(256).await;
+    test_with_size(1024).await;
     test_with_size(4096).await;
 }
 
@@ -27,15 +31,18 @@ async fn test_with_size(size: usize) {
             .collect::<Vec<f32>>()
     });
     let duration = execute_gpu(&a, &b, &mut out, size).await.unwrap();
-    let g_flops = ((size * size * size) as f64) / (duration * 1000000000.0);
-    println!("operation took {} seconds ({} GFlops)", duration, g_flops);
+    let g_flops = ((2 * size * size * size) as f64) / (duration * 1000000000.0);
+    println!(
+        "size {} operation took {} seconds ({} GFlops)",
+        size, duration, g_flops
+    );
     let max_diff = out
         .into_iter()
         .zip(expected_out.into_iter())
         .map(|(x, y)| (x - y).abs())
         .reduce(f32::max)
         .unwrap();
-    println!("MAE for size {} is {}", size, max_diff);
+    println!("=> MAE for size {} is {}", size, max_diff);
 }
 
 fn random_matrix(size: usize) -> Vec<f32> {
@@ -180,7 +187,7 @@ async fn execute_gpu_inner(
     let mut encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     encoder.write_timestamp(&query_set, 0);
-    {
+    for _ in 0..REPEATS {
         let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: None,
             timestamp_writes: None,
@@ -245,7 +252,7 @@ async fn execute_gpu_inner(
         drop(data);
         timestamp_destination_buffer.unmap();
 
-        Some(nanos / 1000000000.0)
+        Some((nanos / (REPEATS as f64)) / 1000000000.0)
     } else {
         panic!("failed to run compute on gpu!")
     }
