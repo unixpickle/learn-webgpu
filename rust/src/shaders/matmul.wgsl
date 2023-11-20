@@ -1,14 +1,14 @@
 @group(0) @binding(0) var<storage, read> n: i32;
-@group(0) @binding(1) var<storage, read> matA: array<f32>;
+@group(0) @binding(1) var<storage, read> matA: array<vec2<f32>>;
 @group(0) @binding(2) var<storage, read> matB: array<vec4<f32>>;
 @group(0) @binding(3) var<storage, read_write> matC: array<vec4<f32>>;
 
-// A 64x8 matrix loaded from A.
-var<workgroup> bufferA: array<f32, 512>;
+// A 64x16 matrix loaded from A.
+var<workgroup> bufferA: array<f32, 1024>;
 
-// An 8x64 matrix loaded from B, but reshaped and permuted
-// to avoid bank conflicts.
-var<workgroup> bufferB: array<f32, 512>;
+// A 16x64 matrix loaded from B, but reshaped and permuted
+// to shape 8x128 to avoid bank conflicts.
+var<workgroup> bufferB: array<f32, 1024>;
 
 @compute @workgroup_size(8, 8)
 fn main(
@@ -21,65 +21,69 @@ fn main(
 
     var sum: array<vec4<f32>, 16> = array<vec4<f32>, 16>();
 
-    for (var i: i32 = 0; i < size; i += 8) {
+    for (var i: i32 = 0; i < size; i += 16) {
         workgroupBarrier();
 
-        // Load from A one 8x8 block at a time.
+        // Load from A one 8x16 block at a time.
         let loadACol = i32(tid.x);
         let loadARow = i32(tid.y);
         for (var j: i32 = 0; j < 8; j++) {
-            let inputIndex = (aRow + loadARow + 8*j)*size + loadACol + i;
-            let outputIndex = (loadARow + 8*j)*8 + loadACol;
-            bufferA[outputIndex] = matA[inputIndex];
+            let inputIndex = (aRow + loadARow + 8*j)*(size / 2) + loadACol + (i / 2);
+            let outputIndex = (loadARow + 8*j)*16 + loadACol*2;
+            let aIn = matA[inputIndex];
+            bufferA[outputIndex] = aIn.x;
+            bufferA[outputIndex+1] = aIn.y;
         }
 
         // Load from B. Each thread reads 8 sequential floats,
         // and then stores each dimension of the loaded 8-float
         // vector in consecutive rows of bufferB.
         // This allows fewer bank conflicts.
-        let inputIndex = (i32(tid.y)+i)*(size / 4) + bCol / 4 + i32(tid.x)*2;
-        let bIn1 = matB[inputIndex];
-        let bIn2 = matB[inputIndex+1];
-        let bufferIdx = i32(tid.y)*8 + i32(tid.x);
-        bufferB[bufferIdx] = bIn1.x;
-        bufferB[bufferIdx+64] = bIn1.y;
-        bufferB[bufferIdx+64*2] = bIn1.z;
-        bufferB[bufferIdx+64*3] = bIn1.w;
-        bufferB[bufferIdx+64*4] = bIn2.x;
-        bufferB[bufferIdx+64*5] = bIn2.y;
-        bufferB[bufferIdx+64*6] = bIn2.z;
-        bufferB[bufferIdx+64*7] = bIn2.w;
+        for (var j: i32 = 0; j < 2; j++) {
+            let inputIndex = (i32(tid.y)+i+j*8)*(size / 4) + bCol / 4 + i32(tid.x)*2;
+            let bIn1 = matB[inputIndex];
+            let bIn2 = matB[inputIndex+1];
+            let bufferIdx = j*64 + i32(tid.y)*8 + i32(tid.x);
+            bufferB[bufferIdx] = bIn1.x;
+            bufferB[bufferIdx+128] = bIn1.y;
+            bufferB[bufferIdx+128*2] = bIn1.z;
+            bufferB[bufferIdx+128*3] = bIn1.w;
+            bufferB[bufferIdx+128*4] = bIn2.x;
+            bufferB[bufferIdx+128*5] = bIn2.y;
+            bufferB[bufferIdx+128*6] = bIn2.z;
+            bufferB[bufferIdx+128*7] = bIn2.w;
+        }
 
         workgroupBarrier();
 
         // Perform a bunch of outer products.
-        for (var j: i32 = 0; j < 8; j++) {
-            let offsetA = i32(tid.y)*8*8 + j;
+        for (var j: i32 = 0; j < 16; j++) {
+            let offsetA = i32(tid.y)*8*16 + j;
             let localA0 = vec4<f32>(
                 bufferA[offsetA],
-                bufferA[offsetA + 8],
-                bufferA[offsetA + 8*2],
-                bufferA[offsetA + 8*3],
+                bufferA[offsetA + 16],
+                bufferA[offsetA + 16*2],
+                bufferA[offsetA + 16*3],
             );
             let localA1 = vec4<f32>(
-                bufferA[offsetA + 8*4],
-                bufferA[offsetA + 8*5],
-                bufferA[offsetA + 8*6],
-                bufferA[offsetA + 8*7],
+                bufferA[offsetA + 16*4],
+                bufferA[offsetA + 16*5],
+                bufferA[offsetA + 16*6],
+                bufferA[offsetA + 16*7],
             );
 
             let offsetB = i32(tid.x) + j*8;
             let localB0 = vec4<f32>(
                 bufferB[offsetB],
-                bufferB[offsetB + 64],
-                bufferB[offsetB + 64*2],
-                bufferB[offsetB + 64*3],
+                bufferB[offsetB + 128],
+                bufferB[offsetB + 128*2],
+                bufferB[offsetB + 128*3],
             );
             let localB1 = vec4<f32>(
-                bufferB[offsetB + 64*4],
-                bufferB[offsetB + 64*5],
-                bufferB[offsetB + 64*6],
-                bufferB[offsetB + 64*7],
+                bufferB[offsetB + 128*4],
+                bufferB[offsetB + 128*5],
+                bufferB[offsetB + 128*6],
+                bufferB[offsetB + 128*7],
             );
 
             sum[0] += localB0 * localA0.x;
