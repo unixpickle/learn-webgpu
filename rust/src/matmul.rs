@@ -20,15 +20,14 @@ async fn test_with_size(size: usize) {
     let b = random_matrix(size);
     let mut out = random_matrix(size);
     let expected_out = (0..size).into_iter().flat_map(|i| {
-        (0..size)
-            .into_iter()
-            .map(|j| {
-                (0..size)
-                    .into_iter()
-                    .map(|k| a[i * size + k] * b[k * size + j])
-                    .sum::<f32>()
-            })
-            .collect::<Vec<f32>>()
+        let a_ref = &a;
+        let b_ref = &b;
+        (0..size).into_iter().map(move |j| {
+            (0..size)
+                .into_iter()
+                .map(|k| a_ref[i * size + k] * b_ref[k * size + j])
+                .sum::<f32>()
+        })
     });
     let duration = execute_gpu(&a, &b, &mut out, size).await.unwrap();
     let g_flops = ((2 * size * size * size) as f64) / (duration * 1000000000.0);
