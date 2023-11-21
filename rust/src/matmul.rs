@@ -1,34 +1,44 @@
 // Based on https://github.com/gfx-rs/wgpu/tree/1d7c7c8a3c10eb13a32b7522d92c44b6b01a36de/examples/hello-compute
-
 extern crate wgpu;
 
-use rand::prelude::*;
+mod matmul_cpu;
+use matmul_cpu::random_matrix;
+
 use std::borrow::Cow;
 use wgpu::{util::DeviceExt, BufferAddress, QuerySetDescriptor, QueryType};
+
+use crate::matmul_cpu::{cpu_matmul_v1, cpu_matmul_v2, cpu_matmul_v3, time_cpu_matmul};
 
 const REPEATS: i32 = 3;
 
 async fn run() {
+    println!("testing CPU matmuls...");
+    benchmark_cpu_matmuls(1024);
+    println!("testing GPU matmuls...");
     test_with_size(64).await;
     test_with_size(256).await;
     test_with_size(1024).await;
     test_with_size(4096).await;
 }
 
+fn benchmark_cpu_matmuls(size: usize) {
+    let a = random_matrix(size);
+    let b = random_matrix(size);
+    let out_v1: Vec<f32> = cpu_matmul_v1(&a, &b, size).collect();
+    let out_v2: Vec<f32> = cpu_matmul_v2(&a, &b, size).collect();
+    let out_v3: Vec<f32> = cpu_matmul_v3(&a, &b, size).collect();
+    assert_eq!(out_v1, out_v2);
+    assert_eq!(out_v1, out_v3);
+    time_cpu_matmul(&a, &b, size, "cpu_matmul_v1", cpu_matmul_v1);
+    time_cpu_matmul(&a, &b, size, "cpu_matmul_v2", cpu_matmul_v2);
+    time_cpu_matmul(&a, &b, size, "cpu_matmul_v3", cpu_matmul_v3);
+}
+
 async fn test_with_size(size: usize) {
     let a = random_matrix(size);
     let b = random_matrix(size);
     let mut out = random_matrix(size);
-    let expected_out = (0..size).into_iter().flat_map(|i| {
-        let a_ref = &a;
-        let b_ref = &b;
-        (0..size).into_iter().map(move |j| {
-            (0..size)
-                .into_iter()
-                .map(|k| a_ref[i * size + k] * b_ref[k * size + j])
-                .sum::<f32>()
-        })
-    });
+    let expected_out = cpu_matmul_v1(&a, &b, size);
     let duration = execute_gpu(&a, &b, &mut out, size).await.unwrap();
     let g_flops = ((2 * size * size * size) as f64) / (duration * 1000000000.0);
     println!(
@@ -37,19 +47,11 @@ async fn test_with_size(size: usize) {
     );
     let max_diff = out
         .into_iter()
-        .zip(expected_out.into_iter())
+        .zip(expected_out)
         .map(|(x, y)| (x - y).abs())
         .reduce(f32::max)
         .unwrap();
     println!("=> MAE for size {} is {}", size, max_diff);
-}
-
-fn random_matrix(size: usize) -> Vec<f32> {
-    let mut rng = rand::thread_rng();
-    (0..size * size)
-        .into_iter()
-        .map(|_| rng.gen::<f32>() * 2.0 - 1.0)
-        .collect()
 }
 
 async fn execute_gpu(mat1: &[f32], mat2: &[f32], out: &mut [f32], size: usize) -> Option<f64> {
