@@ -5,7 +5,7 @@ use std::time::Instant;
 
 const REPEATS: i32 = 5;
 
-pub fn time_cpu_matmul<'a, I: 'a + Iterator<Item = f32>, F>(
+pub fn time_cpu_matmul<'a, I: 'a + IntoIterator<Item = f32>, F>(
     a: &'a [f32],
     b: &'a [f32],
     size: usize,
@@ -18,7 +18,7 @@ pub fn time_cpu_matmul<'a, I: 'a + Iterator<Item = f32>, F>(
     let mut last_result: Option<f32> = None;
     for _ in 0..REPEATS {
         let result = f(a, b, size);
-        let sum = result.sum();
+        let sum = result.into_iter().sum();
         // Use result to make sure it doesn't get optimized away.
         if let Some(x) = last_result {
             assert_eq!(x, sum);
@@ -146,4 +146,18 @@ pub fn cpu_matmul_v3<'a>(
         y: 0,
         phantom: PhantomData::default(),
     }
+}
+
+pub fn cpu_matmul_v4<'a>(a: &'a [f32], b: &'a [f32], size: usize) -> Vec<f32> {
+    let mut results = Vec::with_capacity(size * size);
+    for i in 0..size {
+        for j in 0..size {
+            let mut sum = 0.0;
+            for k in 0..size {
+                sum += a[i * size + k] * b[j + size * k];
+            }
+            results.push(sum)
+        }
+    }
+    results
 }

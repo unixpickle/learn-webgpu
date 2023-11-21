@@ -7,7 +7,9 @@ use matmul_cpu::random_matrix;
 use std::borrow::Cow;
 use wgpu::{util::DeviceExt, BufferAddress, QuerySetDescriptor, QueryType};
 
-use crate::matmul_cpu::{cpu_matmul_v1, cpu_matmul_v2, cpu_matmul_v3, time_cpu_matmul};
+use crate::matmul_cpu::{
+    cpu_matmul_v1, cpu_matmul_v2, cpu_matmul_v3, cpu_matmul_v4, time_cpu_matmul,
+};
 
 const REPEATS: i32 = 3;
 
@@ -24,14 +26,20 @@ async fn run() {
 fn benchmark_cpu_matmuls(size: usize) {
     let a = random_matrix(size);
     let b = random_matrix(size);
+
+    println!("testing CPU outputs...");
     let out_v1: Vec<f32> = cpu_matmul_v1(&a, &b, size).collect();
     let out_v2: Vec<f32> = cpu_matmul_v2(&a, &b, size).collect();
     let out_v3: Vec<f32> = cpu_matmul_v3(&a, &b, size).collect();
+    let out_v4: Vec<f32> = cpu_matmul_v4(&a, &b, size);
     assert_eq!(out_v1, out_v2);
     assert_eq!(out_v1, out_v3);
+    assert_eq!(out_v1, out_v4);
+    println!("timing CPU methods...");
     time_cpu_matmul(&a, &b, size, "cpu_matmul_v1", cpu_matmul_v1);
     time_cpu_matmul(&a, &b, size, "cpu_matmul_v2", cpu_matmul_v2);
     time_cpu_matmul(&a, &b, size, "cpu_matmul_v3", cpu_matmul_v3);
+    time_cpu_matmul(&a, &b, size, "cpu_matmul_v4", cpu_matmul_v4);
 }
 
 async fn test_with_size(size: usize) {
